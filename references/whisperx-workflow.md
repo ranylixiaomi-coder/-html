@@ -36,14 +36,18 @@ python3 scripts/listening_pipeline.py run --audio WORK/原音.mp3 --exam WORK/ex
 
 单题候选从本题 evidence 引句匹配逐词时间，再扩为完整句；输出 `question-contexts.json` 与 `cuts-candidates.json`。找不到或不唯一时列出问题。Agent 继续检查需要的前文/指代/否定/因果/推断语境，必要时扩大范围；允许题间重叠，不只剪答案单词。
 
+`listening-run.json` 的 `needs_review` 表示题组窗口或单题证据仍有缺项，命令返回非零。先修订对应题组或题号；同源时间轴仍可复用。`scripts/align_whisperx.py` 执行逐词对齐，`scripts/preferences.py` 按本次已确认范围筛选题目。
+
 ## 3. 试听复核 → 真正裁剪 → 构建与浏览器验收
 
-Agent 实际试听首尾并核对题意后，在候选清单逐项写具体 evidence 与 verified=true；未复核时不得直接批量改 true。清单绑定原音，必须消除所有 issues，完整保留题组与单题候选。
+Agent 实际试听首尾并核对题意后，在候选清单逐项写具体 evidence 与 verified=true；题组条目还需从原件记录至少三个英文词的 opening_quote 和 closing_quote，用于构建时核对首尾。未复核时不得直接批量改 true。清单绑定原音，必须消除所有 issues，完整保留题组与单题候选。
 
 ```bash
 python3 scripts/listening_pipeline.py cut --audio WORK/原音.mp3 --manifest WORK/cuts-reviewed.json --transcript WORK/listening/aligned.json --out WORK/audio-out
 ```
 
 整段进入 audio-out，单题进入 audio-out/questions，自动沿用既有 audio_wiring 接入 HTML。输出 cuts_verified_by_record 仅指已有实际复核记录并完成裁剪；继续构建与真浏览器播放才可交付。不把录音复制成功、对齐成功或候选已生成当作完整精听验收。
+
+`scripts/audio_wiring.py` 将整段、逐题文件与同源转写交给构建步骤。支持的常用音频原件保留原始字节，用于校验转写出处；逐题片段采用 MP3。
 
 更新文字不重切；同源且切点不变才复用缓存。下载超时/未就绪请报告具体阶段，让老师选择延长或替代路径，不能未经同意降级成未分段整卷原音。

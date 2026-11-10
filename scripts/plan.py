@@ -20,20 +20,25 @@ FEATURES=[('annotations','批注','原文划线、记号与文字批注'),
           ('dictionary','查词','点词/划词查询；默认只内置本篇出现的词的离线释义'),
           ('quick_answers','速对答案','全部/按板块快速揭晓客观题与填空答案'),
           ('classroom_tools','课堂工具','计时、计分、待复讲、随机抽号、打印'),
-          ('deep_reading','篇章精读','篇章结构、逻辑与信号词、课堂追问'),
+          ('deep_reading','篇章精读','思维导图、文章结构与课堂追问'),
           ('writing_transfer','写作迁移','原句表达效果、可复用句式、示范改写'),
           ('culture_background','文化背景','有来源的背景解读，默认关闭')]
 RANGES={'A':('独立听力精听','listening','intensive'),'B':('整卷讲评','all','lesson'),'C':('指定板块',None,'lesson')}
 
-def menu():
-    lines=['本次生成先选范围，再选功能。范围单选，功能可多选（回复编号即可）。','',
-           '第一问 · 这次做哪些内容？','  A. 独立听力精听（只做听力 Text，保留原题号与录音）',
-           '  B. 整卷讲评（已提供的全部题型）','  C. 指定板块（请写出章节，如 reading,A,L6）','',
-           '第二问 · 本次需要哪些功能？可多选，回复编号（例如 1、3、5），也可以说“全部”“基础讲评即可”“沿用上次”。']
+def menu(stage='all'):
+    scope=['这次想讲哪些内容？回 A、B 或 C 就行。',
+           '  A. 只做听力',
+           '  B. 整张试卷',
+           '  C. 只做指定板块']
+    if stage=='scope':
+        return '\n'.join(scope)
+    lines=['还想加哪些功能？可以多选，回编号就行，比如 5、7。',
+           '也可以说“基础讲评就好”“全部”或“沿用上次”。']
     for index,(_,label,note) in enumerate(FEATURES,1):
         lines.append(f'  {index}. {label} —— {note}')
-    lines+=['','说明：原文、题目、答案与解析、定位、必要译文、音频/倍速/精听挖空、备课编辑与课堂记录导出是基础功能，始终保留，不必勾选。',
-            '未选择的扩展不会生成，也不显示入口。']
+    lines+=['','基础讲评已有题目、答案、解析和原文定位。选做听力时，播放器和精听练习也在基础功能里。']
+    if stage=='all':
+        lines=scope+['']+lines
     return '\n'.join(lines)
 
 def parse_features(raw,previous=None):
@@ -42,7 +47,7 @@ def parse_features(raw,previous=None):
         if not previous:raise ValueError('选择“沿用上次”时必须提供 --previous 指向上次的 generation-plan.json')
         return {key:bool(previous['features'][key]) for key,_,_ in FEATURES}
     if text in {'全部','all','都要'}:return {key:True for key,_,_ in FEATURES}
-    if text in {'基础讲评即可','都不要','none','无'}:return {key:False for key,_,_ in FEATURES}
+    if text in {'基础讲评即可','基础讲评就好','基础讲评','都不要','none','无'}:return {key:False for key,_,_ in FEATURES}
     tokens=[token for token in text.replace('，',',').replace('、',',').replace(' ',',').split(',') if token]
     if not tokens:raise ValueError('请给出功能编号（如 1,3,5），或“全部/基础讲评即可/沿用上次”')
     chosen=set()
@@ -102,7 +107,8 @@ def main():
     force_utf8()
     parser=argparse.ArgumentParser(description='把老师的回答变成合法的 generation-plan.json')
     sub=parser.add_subparsers(dest='command',required=True)
-    sub.add_parser('menu',help='打印可照抄的范围与功能菜单')
+    menu_parser=sub.add_parser('menu',help='打印范围或功能菜单')
+    menu_parser.add_argument('--stage',choices=['all','scope','features'],default='all')
     make_parser=sub.add_parser('make',help='按老师的回答生成计划')
     make_parser.add_argument('--range',required=True,help='A=独立听力精听 B=整卷讲评 C=指定板块')
     make_parser.add_argument('--sections',help='C 时必填，如 reading,A,L6')
@@ -117,7 +123,7 @@ def main():
     check_parser.add_argument('plan')
     args=parser.parse_args()
     try:
-        if args.command=='menu':print(menu());return 0
+        if args.command=='menu':print(menu(args.stage));return 0
         if args.command=='make':
             plan,summary=make(args)
             Path(args.out).write_text(json.dumps(plan,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')

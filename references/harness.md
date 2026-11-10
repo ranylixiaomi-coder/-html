@@ -35,6 +35,8 @@
 
 ## 第一步到第十三步
 
+首次调用先给老师材料提示，已有附件就直接确认已收到。问“怎么用”或收材料时可先在对话中完成，不必等环境装好。实际执行本页的 Python 命令前，助手先找到能运行的 Python；找不到时按 [首次环境准备](../docs/SETUP.md) 处理。
+
 ### 第 1 步 🤖 安装与更新核对
 
 - 命令：`python3 scripts/check_install.py`
@@ -49,13 +51,13 @@
 
 ### 第 3 步 🧑 问范围
 
-- 没有命令：整卷讲评 / 指定板块 / **只要听力（就是"只要听力"这一档）**，一次问清。
+- 可用 `python3 scripts/plan.py menu --stage scope` 显示三选一。选“指定板块”时，用本卷实际题型和题号再列一组多选；老师已经说出板块时不再追问。
 - 判定：老师明确回答。未回答不得默认整卷，也不得默认全部功能。
 - 详见 [范围与提速](generation-planning.md) 与 [教师选项](teacher-options.md)。
 
 ### 第 4 步 🧑 问功能（七项多选）
 
-- 命令：`python3 scripts/plan.py menu` → `python3 scripts/plan.py make --confirmed --range A --features 1,3,5 --response "老师本次实际回答" --material paper=WORK/试卷.pdf --material answers=WORK/答案.docx --material audio=WORK/听力.mp3 --out WORK/generation-plan.json` → `python3 scripts/plan.py check WORK/generation-plan.json`
+- 命令：`python3 scripts/plan.py menu --stage features` → `python3 scripts/plan.py make --confirmed --range A --features 1,3,5 --response "老师本次实际回答" --material paper=WORK/试卷.pdf --material answers=WORK/答案.docx --material audio=WORK/听力.mp3 --out WORK/generation-plan.json` → `python3 scripts/plan.py check WORK/generation-plan.json`
 - 无听力时省略 audio 材料，已有材料按实际角色逐项登记。
 - 判定：七项全部记录在案、`--confirmed` 已由老师确认、计划与老师回答一致。不能替老师勾选，也不能用单选冒充多选。
 - 详见 [教师选项](teacher-options.md)。

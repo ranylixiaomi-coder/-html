@@ -1,9 +1,39 @@
 ---
 name: english-exam-studio
 description: 将英语试卷、参考答案与听力音频制作成可离线使用的互动 HTML 讲评课件。用于英语讲试卷、阅读讲评、听力自动接入选段与挖空精听，覆盖阅读、七选五、完形、语法填空和写作；内置答案原件溯源核对（answers.json + source-ledger + 逐题审计）与听力三档降级接入，音频缺失或答案对不上时构建直接报错。
+display_name: "讲卷鸭"
+display_name_en: "English Exam Studio"
+description_zh: "先发试卷和答案，讲听力就把原始录音也发来。选讲整卷、只做听力或指定板块，再勾选你想用的功能。讲卷鸭帮你做好一份浏览器打开就能投屏的互动课件。"
+description_en: "Send your English exam and answer key, plus the original recording if you want listening practice. Choose what to teach and which extras to include. Get an interactive lesson you can open in a browser."
+version: "1.0.126"
+author: "图图老师 · hututu-ai"
+examples_zh:
+  - "我是第一次用讲卷鸭，带我做一份英语试卷讲评课件。"
+  - "我想只做听力精听，告诉我先发哪些材料。"
+  - "试卷和答案发来了，先让我选这次讲哪些部分。"
+examples_en:
+  - "Turn my exam and answer key into an interactive review lesson. Confirm the scope first."
+  - "Review only the reading and gap-fill sections, with passage evidence and vocabulary notes."
+  - "Check whether my listening recording can be split by question before creating a listening lesson."
 ---
 
 # 英语实战讲评 Skill
+
+课堂投屏时可在「显示设置 → 字号」选 48 · 投屏或 56 · 超大。旧课件要用新版模板重新生成才能获得新的字号设置。
+
+## 第一次用讲卷鸭
+
+老师点“试试这样用”、问怎么用或首次调用时，先用一条短消息告诉老师下一步。还没收到材料就说：“先发试卷和参考答案，PDF、照片或 Word 都行。要讲听力的话，把原始录音也一起发来，不用自己剪。” 已收到材料就说清收到了什么，不重复索要；先看这张卷有哪些题型，再让老师选。用法咨询、收材料和选项引导不因当前还没有 Python 而停止。
+
+按 [教师选项](references/teacher-options.md) 一步一步问：发材料 → 选范围 → 选功能。老师还没明确范围时，先在聊天里列出适用于本卷的范围选项，问完就结束本轮，等老师下一条消息。WorkBuddy 的范围问题不要用弹窗，也不要把上传材料当作同意整卷。选“指定板块”后列出本卷真实题型和题号。范围明确后，功能支持勾选就用宿主的真实控件；否则让老师回编号。控件关闭、跳过、超时或返回默认值都不算确认。对老师说“思维导图”“文化背景”等能看懂的名称，不展示内部字段和命令。
+
+选完后由助手检查并准备本次所需工具。优先使用宿主或本机已有的 Python；缺少时先按 [首次环境准备](docs/SETUP.md) 处理，再运行安装校验，不反复执行已确认不存在的命令。有听力切片才准备音频工具；下载或安装需要授权时，只说缺什么和怎么确认。已有的同源时间轴优先复用。
+
+交付消息先给“打开课件”的独立 HTML，再给“完整课件包”的 ZIP。验证图片和音频已内嵌后，才把该 HTML 标成可单独转发；目录模式只给完整包。换 iPad 可传这一个 HTML，前提是接收端能运行网页脚本；有备课修改先在课件里重新导出。具体见 [单文件与触屏课堂](references/portable-classroom.md)。
+
+## 1.0.123 语篇导图与读后积累
+
+生成阅读类语篇时执行 [语篇导图与读后总结](references/passage-review.md)。在篇章精读中绘制结构导图；每篇讲评末尾按题归纳有证据和适用条件的做题规律，并汇总本篇生词难词。复用已审核结构、题目方法和词汇，不另造平行内容。尊重本次功能选择，音标只在查证后填写。
 
 ## 多套试卷
 
@@ -33,11 +63,11 @@ description: 将英语试卷、参考答案与听力音频制作成可离线使�
 
 老师侧的安装与提问说明在 [老师一页说明](docs/TEACHER-QUICKSTART.md)（含"遇到问题发什么回来"）；首次使用采用“收材料 → 盘点已有板块和听力原文 → 询问范围及扩展 → 仅准备必要依赖 → 生成与验收”。先邀请老师提供本次试卷、答案和音频；已给的不重复索取。缺材料只追问所选范围必需项，不要求阅读课提供听力。安装 Skill 时不捆绑下载语音模型。详见 [教师选项](references/teacher-options.md)。
 
-遇到 Windows 老师时，可以让他**双击技能包里的 `一键体检.bat`**（与 `SKILL.md` 同层，只读本机环境、构建自带示例、写报告，不安装不下载）来收集实测材料；报告只含文本、不含试卷与音频。读取 [更新说明](docs/UPDATE.md)，先运行 `scripts/check_install.py`。缺模板、词典、脚本、安装清单或哈希不符时不能宣布“已安装/已更新/可以生成”。WebFetch 看到了 README 或 VERSION 不等于下载了完整包；受限宿主不能自行拼一个文字文件夹或 `.sh` 更新脚本代替安装。
+Windows 环境排查时，可由助手运行技能包里的 `一键体检.bat`（与 `SKILL.md` 同层，只读本机环境、构建自带示例、写报告，不安装不下载）。必要时才请老师双击。报告只含文本、不含试卷与音频。读取 [更新说明](docs/UPDATE.md)。在确认有可用 Python 后，助手运行 `scripts/check_install.py`；缺模板、词典、脚本、清单或指纹不符时不能宣布“可以生成”。WebFetch 看到了 README 或 VERSION 不等于下载了完整包。
 
 网络受限时按可靠性依次尝试**四条安装路径**（顺序与 `scripts/host_probe.py` 一致，先跑 `python3 scripts/host_probe.py --network` 看实测可用性）：① **老师把发布 ZIP 作为附件上传**（最稳，ZIP 约 2MB，下载可以在别的网络完成，安装只要这台机器拿到文件）；② 抓 `raw.githubusercontent.com` 上的文件——用 `python3 scripts/fetch_package.py --base https://raw.githubusercontent.com/hututu-ai/english-exam-studio/main --out 临时目录` 一条命令抓完并逐个核对 SHA256，不要手工逐个抓；③ raw 打不开时同一条命令换 CDN：`python3 scripts/fetch_package.py --base https://cdn.jsdelivr.net/gh/hututu-ai/english-exam-studio@main --out 临时目录`（第三方 CDN，哈希一致只证明传输没损坏、来源可信仍需官方 `SHA256SUMS.txt`）；④ 最后才是 `git clone github.com`——沙箱常拦 TLS 握手，失败不要反复重试。前三条抓完都必须 `check_install.py` 到 `complete` 才算装上。
 
-新任务读取 [教师选项](references/teacher-options.md)，先问“独立听力精听、整卷讲评还是指定板块？”（**只要听力就用这一档：同一套 Skill，不需要另装一个"听力版"**），再问“请多选本次需要的功能：批注、查词、速对答案、课堂工具、篇章精读、写作迁移、文化背景。”；已明确选择不重复问，未回答不默认整卷/全部功能。优先使用真正的多选控件；无多选控件则跑 `python3 scripts/plan.py menu` 打印编号清单，让老师一次回复多个编号，再用 `python3 scripts/plan.py make --confirmed --range ... --features ...` 生成计划（七项一定全记，缺 `--confirmed` 会报错，不替老师作答），并用 `plan.py check` 复核。不能用单选冒充多选。将真实回答写入 generation-plan.json，同时绑定 `--response` 与 `--material`，使用 `scripts/build.py ... --plan generation-plan.json --review teaching-review.json`；固定基础功能始终保留，未选扩展不编写且不显示入口。详见 [范围与提速](references/generation-planning.md)。
+新任务按 [教师选项](references/teacher-options.md) 分轮引导。可运行 Python 时用 `python3 scripts/plan.py menu --stage scope` 和 `python3 scripts/plan.py menu --stage features` 逐轮显示；尚未有 Python 时直接按教师选项用文字问。取得真实回答后再用 `python3 scripts/plan.py make --confirmed --range ... --features ...` 绑定 `--response` 和 `--material` 写入 generation-plan.json，并用 `plan.py check` 复核。构建入口仍使用 `scripts/build.py ... --plan generation-plan.json --review teaching-review.json`。未选扩展不生成、不显示入口。详见 [范围与提速](references/generation-planning.md)。
 
 ## 原件与交付检查（必读）
 
@@ -162,6 +192,8 @@ python3 scripts/answer_audit.py WORK/exam.json --ledger WORK/source-ledger.json 
 先看 [无 Whisper 的听力路径](references/listening-alternatives.md)。有同源字幕可直接导入并裁剪，无需 Whisper；缺工具则先协助安装并试转短录音，只有纸面原文仍需回听或对齐。独立精听是正式生成范围，降级整卷原音不算完成独立精听。
 
 有音频时读取 [听力流程](references/listening.md)。先分析，智能体结合转写、题号提示、题意、停顿生成清单，再精确裁剪。
+
+如果听力失败，先区分文件读取、转写、题组定位、逐题证据和裁剪五个阶段。已有同源时间轴或切片时从失败步骤续做。说明具体题号或片段及原因；没有完成定位的题保留待核对，不把整卷录音当作逐题切片。
 
 ```bash
 python3 scripts/doctor.py --minutes 听力时长
@@ -289,3 +321,18 @@ API 是可选生成能力。见 [API接入取舍](references/api-options.md)：�
 听力顶层分类仍叫「听力」，子菜单与题组标题统一显示「Test 1、Test 2……」。编号按原卷听力题组，标题旁保留该组真实题号范围（如 Test 6 对应第 6–7 题）；不得按20道单题重新编号成20个Test，也不得改变题组或录音对应关系。
 
 文化背景被选中时，必须执行 [本篇文化背景规范](references/culture-background.md)：原文切入、已查证背景、回到本篇的理解和课堂讲述。新生成数据必须填写 reading_connection 与来源 supports，并完成语义复核；不接受测试占位卡或通用百科拼贴。
+
+
+### 精简课堂顶栏（覆盖早期控件摆放说明）
+
+顶部主行只留品牌、批注、速对答案、课堂工具、显示设置、更多；下一行仍是原有章节分类。显示设置内放主题、字体、字号、全屏与白板模式；更多内放备课编辑、单文件导出、资料与课堂记录。保留所有原有操作与状态，不能把显示设置再平铺出来。菜单互斥，点外部或 Esc 关闭，小屏无横向溢出。
+
+
+### 教师直接修订（覆盖早期备课开关说明）
+
+取消备课编辑总开关；解析展开后，题型、解法、步骤、方法可直接点文字修改，失焦保存，Esc取消。答案、证据及复杂字段用本题修改讲解；词句卡保留就地修改/隐藏/恢复。课堂追问参考不再显示，也不要求新增教学追问内容。去掉课堂记录导入导出及JSON内容导出入口；本机自动保存，导出单文件课件携带教师修订、挖空与课堂状态，导出保留原答案基线并区分教师答案。只有同一导出修订版本的本机记录优先；不同导出文件用独立记录标识，防止同标题旧缓存覆盖。导出必须在无旧记录的新浏览器上下文检验修改恢复，不能仅验证原电脑。
+
+
+### 极简审计后的入口约束
+
+课堂工具收进顶栏更多；每题主操作保留解析、定位与必要线索。未标记的待复讲、空白批注及完整修订收在本题更多，已有批注和待复讲提示继续可见。移除重复的词汇CSV/资料文字导出入口，保留统一单文件导出、复制和打印。词句隐藏必须真正不显示，提供管理已隐藏内容以恢复；直接编辑输入时同步保存，Esc恢复本次编辑前内容。导出版本有独立记录标识并携带原内容基线和修订，不能被同标题旧记录覆盖。

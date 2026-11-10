@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+async function openToolbar(p,id){const menu=p.locator('#'+id);if(await menu.count()&&!await menu.evaluate(e=>e.open))await menu.locator(':scope > summary').click()}
 /* Actual browser interaction checks; no dependency installation or network services. */
 const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),crypto=require('node:crypto'),assert=require('node:assert/strict');
 const out=path.resolve(process.argv[2]||'output'),stress=process.argv.includes('--stress');
@@ -155,11 +156,18 @@ async function main(){
    const before=await sizeOf();
    if(!before)skip('analysis-font-scales-with-font-control','打不开解析面板，本项未执行');
    else{
-    await p.locator('#fontPlus').click();await p.locator('#fontPlus').click();
+    await openToolbar(p,'displaySettings');await p.locator('#fontPlus').click();await openToolbar(p,'displaySettings');await p.locator('#fontPlus').click();
     const after=await sizeOf();
     assert.ok(after>before,`解析字号必须跟着字号控件变大：${before} → ${after}`);
-    await p.locator('#fontMinus').click();await p.locator('#fontMinus').click();
+    await openToolbar(p,'displaySettings');await p.locator('#fontMinus').click();await openToolbar(p,'displaySettings');await p.locator('#fontMinus').click();
     assert.ok(Math.abs((await sizeOf())-before)<0.6,'字号调回后解析应回到原大小');
+    const original=await p.locator('#fontSizeSelect').inputValue();
+    await openToolbar(p,'displaySettings');await p.locator('#fontSizeSelect').selectOption({label:'48 · 投屏'});
+    assert.ok(await sizeOf()>=42,'投屏字号需要同时放大逐题解析');
+    await openToolbar(p,'displaySettings');await p.locator('#fontSizeSelect').selectOption({label:'56 · 超大'});
+    assert.ok(await sizeOf()>=50,'超大字号需要同时放大逐题解析');
+    assert.ok(await p.locator('#fontPlus').isDisabled());
+    await openToolbar(p,'displaySettings');await p.locator('#fontSizeSelect').selectOption(original);
     if(!wasOpen&&await button.count())await button.click();   // 还原解析展开状态，后面的检查不受影响
     ok('analysis-font-scales-with-font-control',{before,after});
    }
@@ -293,22 +301,28 @@ async function main(){
    if(await closer.count())await closer.click();
  }
  ok('offline-lookup-serves-lesson-words');
- assert.equal(await p.locator('#themeSelect option').count(),6);for(const theme of ['paper','amethyst','mist','sand','rose','pearl']){await p.locator('#themeSelect').selectOption(theme);assert.equal(await p.locator('#themeSelect').inputValue(),theme)}await p.locator('#themeSelect').selectOption('amethyst');await p.locator('#fontSizeSelect').selectOption('28');await p.reload();await p.waitForFunction(()=>window.__lessonReady);assert.equal(await p.locator('#fontSizeSelect').inputValue(),'28');assert.equal(await p.locator('#themeSelect').inputValue(),'amethyst');ok('font-and-theme-persist');
+ assert.equal(await p.locator('#themeSelect option').count(),6);for(const theme of ['paper','amethyst','mist','sand','rose','pearl']){await openToolbar(p,'displaySettings');await p.locator('#themeSelect').selectOption(theme);assert.equal(await p.locator('#themeSelect').inputValue(),theme)}await openToolbar(p,'displaySettings');await p.locator('#themeSelect').selectOption('amethyst');await openToolbar(p,'displaySettings');await p.locator('#fontSizeSelect').selectOption('28');await p.reload();await p.waitForFunction(()=>window.__lessonReady);assert.equal(await p.locator('#fontSizeSelect').inputValue(),'28');assert.equal(await p.locator('#themeSelect').inputValue(),'amethyst');ok('font-and-theme-persist');
  const before=await p.evaluate(()=>JSON.stringify([ui.openAnswers,[...state.answers]]));await quick(p);assert.equal(await p.evaluate(()=>JSON.stringify([ui.openAnswers,[...state.answers]])),before);ok('quick-answers-whole-and-kind-no-analysis-side-effects');
  const reading=exam.sections.find(s=>sectionPreset(s)==='reading')||exam.sections.find(s=>!isListening(s));if(reading)await go(p,reading);
  if(exam.features?.annotations!==false){await p.locator('#annotate').click();assert.ok(await p.locator('#inkToolbar').isVisible())}else assert.ok(await p.locator('#annotate').isHidden());
  if(reading&&exam.features?.annotations!==false){const box=await p.locator('#section-'+reading.id+' .source-text').first().boundingBox();assert.ok(box);for(const tool of ['pen','arrow','rect','ellipse']){await p.locator('[data-ink-mode="'+tool+'"]').click();await p.mouse.move(box.x+20,box.y+15);await p.mouse.down();await p.mouse.move(box.x+140,box.y+55,{steps:8});await p.mouse.up()}assert.equal(await p.evaluate(()=>ui.ink[state.active].length),4);await p.locator('#inkUndo').click();assert.equal(await p.evaluate(()=>ui.ink[state.active].length),3);await p.locator('#inkClear').click();assert.equal(await p.evaluate(()=>ui.ink[state.active].length),0);ok('pen-arrow-rectangle-ellipse-undo-clear')}
- if(exam.features?.annotations!==false)await p.locator('#inkClose').click();if(exam.features?.classroom_tools!==false){await p.locator('#classroom').click();assert.ok(await p.locator('#classDialog').isVisible());await p.locator('[data-close="classDialog"]').click()}else assert.ok(await p.locator('#classroom').isHidden());ok('annotation-and-classroom-open');
+ if(exam.features?.annotations!==false)await p.locator('#inkClose').click();if(exam.features?.classroom_tools!==false){await openToolbar(p,'lessonMore');await p.locator('#classroom').click();assert.ok(await p.locator('#classDialog').isVisible());await p.locator('[data-close="classDialog"]').click()}else assert.ok(await p.locator('#classroom').isHidden());ok('annotation-and-classroom-open');
 
  // Teacher-authored revisions: use real form controls, then persistence and record import.
  const editSection=exam.sections.find(s=>!isWriting(s)&&s.questions.some(q=>Object.keys(q.options||{}).length));
  if(editSection){await go(p,editSection);const q=editSection.questions.find(q=>Object.keys(q.options||{}).length),other=Object.keys(q.options).find(k=>k!==q.answer)||q.answer;
- await p.locator('#v10EditToggle').click();await p.locator(`[data-v10="editQuestion"][data-qid="${q.id}"]`).click();
+ async function openQuestionEditor(){
+   if(!await p.evaluate(id=>ui.openAnswers.includes(id),q.id))await p.locator(`[data-action="answer"][data-qid="${q.id}"]`).click();
+   const menu=p.locator(`.qcard[data-qid="${q.id}"] .question-secondary`);
+   if(!await menu.evaluate(node=>node.open))await menu.locator(':scope > summary').click();
+   await p.locator(`[data-v10="editQuestion"][data-qid="${q.id}"]`).click();
+ }
+ await openQuestionEditor();
  await p.locator('#v10QForm [name="answer"]').fill('Z');await p.locator('#v10QForm [type="submit"]').click();assert.ok(await p.locator('#v10QForm [role="alert"]').innerText());
  await p.locator('#v10QForm [name="answer"]').fill(other);await p.locator('#v10QForm [name="analysis"]').fill('教师自定义讲评依据');await p.locator('#v10QForm [name="solve_steps"]').fill('本班先对照证据再判断。');await p.locator('#v10QForm [name="strategy"]').fill('教师自定义迁移方法');await p.locator('#v10QForm [type="submit"]').click();assert.ok(await p.locator('#v10Editor').isHidden());
  await p.reload();await p.waitForFunction(()=>window.__lessonReady);assert.equal(await p.evaluate(id=>qmap.get(id).q.answer,q.id),other);assert.equal(await p.evaluate(id=>qmap.get(id).q.answer_status,q.id),'teacher');assert.equal(await p.evaluate(id=>qmap.get(id).q.solve_steps.length,q.id),1);
  if(exam.features?.quick_answers!==false){await p.locator('#quickAnswers').click();assert.match(await p.locator(`[data-fast-reveal="${q.id}"]`).innerText(),/教师修订/);await p.locator('[data-close="quickAnswersDialog"]').click()}
- const record=await p.evaluate(()=>{saveSession();return JSON.parse(localStorage.getItem(saveKey))});await go(p,editSection);await p.locator('#v10EditToggle').click();await p.locator(`[data-v10="editQuestion"][data-qid="${q.id}"]`).click();await p.locator('[data-v10="restoreQuestion"]').click();assert.equal(await p.evaluate(id=>qmap.get(id).q.answer,q.id),q.answer);
+ const record=await p.evaluate(()=>{saveSession();return JSON.parse(localStorage.getItem(saveKey))});await go(p,editSection);await openQuestionEditor();await p.locator('[data-v10="restoreQuestion"]').click();assert.equal(await p.evaluate(id=>qmap.get(id).q.answer,q.id),q.answer);
  await p.evaluate(record=>restoreRecord(record),record);assert.equal(await p.evaluate(id=>qmap.get(id).q.answer,q.id),other);assert.equal(await p.evaluate(id=>qmap.get(id).q.strategy,q.id),'教师自定义迁移方法');ok('teacher-answer-edit-validation-persistence-restore-import');}
  for(const sect of exam.sections.filter(s=>!isListening(s))){await go(p,sect);if(exam.features?.deep_reading===false)assert.equal(await p.locator(`#section-${sect.id} [data-mode="deep"]`).count(),0);if(exam.features?.writing_transfer===false)assert.equal(await p.locator(`#section-${sect.id} [data-mode="writing"]`).count(),0)}
  if(exam.features?.culture_background){const sect=exam.sections.find(s=>s.culture_background?.length);if(sect){await go(p,sect);await p.locator(`#section-${sect.id} .culture-background summary`).click();await p.locator(`#section-${sect.id} [data-action="cultureLocate"]`).first().click();assert.ok(await p.evaluate(()=>Object.keys(state.marks).length>0));ok('culture-card-and-source-location')}}
@@ -395,7 +409,7 @@ async function main(){
  ok('listening-dictation-hides-and-reveals-real-words');
  for(const width of [1024,390]){await p.setViewportSize({width,height:900});assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));await go(p,exam.sections[0]);await quick(p)}ok('narrow-screen-navigation-and-dialogs');await ctx.close();
  if(listening&&Object.keys(exam._embedded_audio||{}).length){const x=await newPage('isolated');await play(x.p,listening);await x.ctx.close();ok('embedded-audio-with-external-audio-blocked')}
- if(stress){report.phase='stress';for(const mode of ['no-speech','bad-storage','no-storage','no-dialog','no-canvas','bad-scores']){report.phase='recovery-'+mode;const x=await newPage(mode);await go(x.p,exam.sections.at(-1));await quick(x.p);if(exam.features?.classroom_tools!==false){await x.p.locator('#classroom').click();assert.ok(await x.p.locator('#classDialog').isVisible());await x.p.locator('#minutes').fill('2');assert.ok(await x.p.locator('#classDialog').isVisible());await x.p.locator('[data-close="classDialog"]').click()}if(mode==='no-speech')await x.p.locator('#fullScreen').click();await x.ctx.close();ok('recovery-'+mode)}const x=await newPage('no-js');assert.ok(await x.p.locator('#bootNotice').isVisible());assert.match(await x.p.locator('#bootNotice').innerText(),/下载完整课件 ZIP/);await x.ctx.close();ok('script-disabled-static-opening-guide')}
+ if(stress){report.phase='stress';for(const mode of ['no-speech','bad-storage','no-storage','no-dialog','no-canvas','bad-scores']){report.phase='recovery-'+mode;const x=await newPage(mode);await go(x.p,exam.sections.at(-1));await quick(x.p);if(exam.features?.classroom_tools!==false){await openToolbar(x.p,'lessonMore');await x.p.locator('#classroom').click();assert.ok(await x.p.locator('#classDialog').isVisible());await x.p.locator('#minutes').fill('2');assert.ok(await x.p.locator('#classDialog').isVisible());await x.p.locator('[data-close="classDialog"]').click()}if(mode==='no-speech'){await openToolbar(x.p,'displaySettings');await x.p.locator('#fullScreen').click();}await x.ctx.close();ok('recovery-'+mode)}const x=await newPage('no-js');assert.ok(await x.p.locator('#bootNotice').isVisible());assert.match(await x.p.locator('#bootNotice').innerText(),/下载完整课件 ZIP/);await x.ctx.close();ok('script-disabled-static-opening-guide')}
  reconcile(exam);console.log('SUMMARY passed='+report.checks.length+' skipped='+report.skipped.length);assert.deepEqual(report.errors,[],'Browser runtime errors');report.status='passed';
 }
 main().catch(e=>{if(report.status!=='not_available')report.status='failed';report.errors.push(e.stack||String(e));console.error(e.message);process.exitCode=1}).finally(async()=>{clearTimeout(deadline);try{if(browser)await browser.close();if(server)await new Promise(r=>server.close(r))}finally{if(fs.existsSync(out))save()}});

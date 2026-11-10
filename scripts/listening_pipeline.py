@@ -2,7 +2,7 @@
 """Audio -> ASR/reuse -> group windows -> alignment -> question contexts -> reviewed cuts.
 Candidates never silently become verified. All checkpoints bind to source bytes.
 """
-import argparse,difflib,json,re,sys,time
+import argparse,difflib,json,re,shutil,sys,time
 from pathlib import Path
 from types import SimpleNamespace
 from audio import sha256,probe,cut
@@ -39,11 +39,14 @@ def group_windows(exam,transcript,duration):
         matches.sort(reverse=True);best=matches[0][0]
         # Earlier occurrence among near-equal matches gives one complete reading, not two repeats.
         near=[m for m in matches if m[0]>=best-.025];score,i,j=min(near,key=lambda m:(m[1],-m[0],m[2]))
+        # Padding is optional. It must not make an adjacent ASR segment ineligible.
         start=max(previous,rows[i]['start']-.3);end=min(duration,rows[j]['end']+.4)
+        if groups and groups[-1]['end']>start:
+            groups[-1]['end']=start
         groups.append({'id':s['id'],'start':start,'end':end,'text':text,'score':round(score,4),'verified':False,
                        'alternatives':[{'start':rows[x]['start'],'end':rows[y]['end'],'score':round(sc,4)} for sc,x,y in matches[:4]],
                        'question_ids':[str(q['id']) for q in s.get('questions',[])]})
-        previous=end
+        previous=rows[j]['end']
     return {'segments':groups,'issues':problems,'status':'windows_review_required'}
 
 def question_contexts(exam,aligned):
@@ -54,6 +57,9 @@ def question_contexts(exam,aligned):
         for q in s.get('questions',[]):
             evidence=q.get('evidence',[])
             if isinstance(evidence,dict):evidence=[evidence]
+            if not evidence:
+                issues.append('第 '+str(q['id'])+' 题缺少原文依据，无法定位逐题片段')
+                continue
             spans=[]
             for e in evidence:
                 quote=tokens(e.get('quote',''));hay=[];indexes=[]
@@ -106,8 +112,10 @@ def execute(args):
     windows=json.loads(Path(args.windows).read_text(encoding='utf-8')) if getattr(args,'windows',None) else group_windows(exam,transcript,duration)
     if getattr(args,'windows',None) and windows.get('source_audio_sha256')!=source:raise ValueError('人工修订窗口属于另一份原音')
     windows['source_audio_sha256']=source;save(out/'windows.json',windows)
-    phase('windows',windows['status'],issues=windows['issues'])
-    if windows['issues']:return log
+    if windows['issues'] or not windows['segments']:
+        phase('windows','needs_review',issues=windows['issues'] or ['本次未生成任何听力题组窗口'])
+        return log
+    phase('windows',windows['status'],issues=[])
     runtime=runtime or runtime_probe(args.python)
     if runtime['status']!='package_ready':phase('alignment','needs_setup',detail=runtime);return log
     # align_whisperx validates every returned time and leaves review pending.
@@ -119,26 +127,31 @@ def execute(args):
     manifest={'source_audio_sha256':source,'expected_count':len(windows['segments'])+len(questions['segments']),
               'segments':[{k:v for k,v in g.items() if k not in ('alternatives',)} for g in windows['segments']]+questions['segments'],
               'issues':questions['issues'],'expected_group_ids':[g['id'] for g in windows['segments']],'expected_question_ids':[str(q['id']) for s in exam['sections'] if s['id'] in {g['id'] for g in windows['segments']} for q in s.get('questions',[])],'status':'listening_review_required'}
-    save(out/'cuts-candidates.json',manifest);phase('contexts','review_required',issues=questions['issues'])
+    save(out/'cuts-candidates.json',manifest);phase('contexts','needs_review' if questions['issues'] else 'review_required',issues=questions['issues'])
     return log
 
 def finalize(args):
-    root=Path(args.out);manifest=json.loads(Path(args.manifest).read_text(encoding='utf-8'))
-    if manifest.get('source_audio_sha256')!=sha256(args.audio):raise ValueError('切片清单与本次原音不符')
+    root=Path(args.out);manifest=json.loads(Path(args.manifest).read_text(encoding='utf-8'));source=sha256(args.audio)
+    if manifest.get('source_audio_sha256')!=source:raise ValueError('切片清单与本次原音不符')
+    transcript=Path(args.transcript) if args.transcript else None
+    if transcript and json.loads(transcript.read_text(encoding='utf-8')).get('source_audio_sha256')!=source:
+        raise ValueError('转写文件与本次原音不符；请使用同源的 aligned.json 或 transcript.json')
     rows=manifest.get('segments',[])
     if set(manifest.get('expected_group_ids',[]))!={r['id'] for r in rows if not r.get('group_id')} or set(manifest.get('expected_question_ids',[]))!={str(q) for r in rows if r.get('group_id') for q in r.get('question_ids',[])}:raise ValueError('已核对清单遗漏题组或题号，不能交付完整精听')
     if not rows or manifest.get('issues'):raise ValueError('切片清单还有未解决问题，不能交付')
     for row in rows:
         if row.get('verified') is not True or len(row.get('evidence','').strip())<12:raise ValueError('片段 '+str(row.get('id'))+' 尚未记录实际试听与题意核对')
     root.mkdir(parents=True,exist_ok=True)
-    import shutil
-    results=[]
-    for kind,subset,dest in [('text',[r for r in rows if not r.get('group_id')],root),('question',[r for r in rows if r.get('group_id')],root/'questions')]:
-        if not subset:raise ValueError('缺少整段或逐题清单，不能标完整精听')
+    groups=[r for r in rows if not r.get('group_id')]
+    questions=[r for r in rows if r.get('group_id')]
+    if not groups or not questions:raise ValueError('缺少整段或逐题清单，不能标完整精听')
+    results={}
+    for kind,subset,dest in [('text',groups,root),('question',questions,root/'questions')]:
         path=root/(kind+'-reviewed.json');save(path,{'kind':kind,'expected_count':len(subset),'segments':subset})
-        results.append(cut(SimpleNamespace(input=args.audio,manifest=str(path),out=str(dest),transcript=args.transcript,allow_unverified=False,resume=True,jobs=2)))
-    if args.transcript:shutil.copy2(args.transcript,root/'transcript.json')
-    return {'status':'cuts_verified_by_record','out':str(root),'note':'继续 build.py、浏览器播放与交付验收'}
+        results[kind]=cut(SimpleNamespace(input=args.audio,manifest=str(path),out=str(dest),transcript=args.transcript,allow_unverified=False,resume=True,jobs=2,threads=2))
+    if transcript and transcript.resolve()!=(root/'transcript.json').resolve():
+        shutil.copy2(transcript,root/'transcript.json')
+    return {'status':'cuts_verified_by_record','out':str(root),'cuts':results,'note':'继续 build.py、浏览器播放与交付验收'}
 
 def main():
     from platform_tools import force_utf8
@@ -157,6 +170,6 @@ def main():
             a.selected_exam=apply_plan(json.loads(Path(a.exam).read_text(encoding='utf-8')),data)
             a.selected_exam['sections']=[s for s in a.selected_exam['sections'] if is_listening(s)]
             if not a.selected_exam['sections']:raise ValueError('老师本次未选择听力，不启动音频处理')
-        r=execute(a) if a.command=='run' else finalize(a);print(json.dumps(r,ensure_ascii=False,indent=2));return 2 if isinstance(r,dict) and any(x.get('status') in ('failed','needs_setup') for x in r.get('stages',[])) else 0
+        r=execute(a) if a.command=='run' else finalize(a);print(json.dumps(r,ensure_ascii=False,indent=2));return 2 if any(x.get('status') in ('failed','needs_setup','needs_review') for x in r.get('stages',[])) else 0
     except (OSError,ValueError,KeyError,AssertionError) as e:p.exit(1,'ERROR: '+str(e)+'\n')
 if __name__=='__main__':raise SystemExit(main())

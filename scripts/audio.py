@@ -9,12 +9,12 @@ Fast paths that matter on a teacher laptop:
   cut --allow-unverified   emit audio without semantic verification, recorded as auto_silence
 """
 import wave
-import argparse,concurrent.futures,difflib,hashlib,json,os,re,shutil,subprocess,sys,tempfile
+import argparse,concurrent.futures,difflib,hashlib,json,math,os,re,shutil,subprocess,sys,tempfile
 from pathlib import Path
 from exam_document import read_json
 from platform_tools import IS_WINDOWS,explain_error,ffmpeg_bin,ffprobe_bin,force_utf8,install_hints,whisper_bin
 
-AUDIO_COPY_SUFFIXES={'.mp3','.m4a','.aac','.ogg','.oga','.opus'}
+AUDIO_COPY_SUFFIXES={'.mp3','.m4a','.aac','.ogg','.oga','.opus','.wav','.flac','.webm'}
 MAX_WORKERS=min(4,max(1,(os.cpu_count() or 2)//2))
 DEVICE={'mode':'auto','supports_no_gpu':None}
 
@@ -44,10 +44,19 @@ def probe(path):
             with wave.open(str(path),'rb') as f:
                 if f.getcomptype()=='NONE':
                     if f.getnframes()<=0:raise ValueError('WAV 没有可播放的音频帧')
-                    if len(f.readframes(f.getnframes()))!=f.getnframes()*f.getsampwidth()*f.getnchannels():raise ValueError('WAV 文件已截断')
+                    f.setpos(f.getnframes()-1)
+                    if len(f.readframes(1))!=f.getsampwidth()*f.getnchannels():raise ValueError('WAV 文件已截断')
                     return f.getnframes()/f.getframerate()
         except wave.Error:pass
-    return float(run([ffprobe_bin(),'-v','error','-show_entries','format=duration','-of','default=nw=1:nk=1',path]))
+    metadata=json.loads(run([ffprobe_bin(),'-v','error','-select_streams','a:0',
+                             '-show_entries','stream=codec_type,duration:format=duration','-of','json',path],timeout=30))
+    streams=metadata.get('streams',[])
+    if not streams:raise ValueError(f'{Path(path).name} 没有可用音轨；请提供原始听力录音')
+    for value in (streams[0].get('duration'),metadata.get('format',{}).get('duration')):
+        if value in (None,'N/A'):continue
+        duration=float(value)
+        if math.isfinite(duration) and duration>0:return duration
+    raise ValueError(f'{Path(path).name} 无法读取有效音频时长；请重新导出为 MP3 或 WAV')
 
 def dump(path,data):
     Path(path).write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding='utf-8')
@@ -238,10 +247,11 @@ def cut(a):
     threads=max(1,a.threads);jobs=max(1,a.jobs)
     with tempfile.TemporaryDirectory(dir=out) as temp:
         stage=Path(temp)
-        if not (out/full_name).is_file() or not reusable_source:
+        full_output=out/full_name
+        if not full_output.is_file() or not reusable_source or (keep_full and sha256(full_output)!=source_hash):
             progress('准备完整原音…')
             if keep_full:shutil.copy2(source,stage/full_name)
-            else:run([ffmpeg_bin(),'-v','error','-threads',threads,'-i',str(source),'-vn','-c:a','libmp3lame','-q:a','2',str(stage/full_name)])
+            else:run([ffmpeg_bin(),'-nostdin','-v','error','-threads',threads,'-i',str(source),'-map','0:a:0','-c:a','libmp3lame','-q:a','2',str(stage/full_name)])
         final=[];todo=[];reused=[]
         for s in rows:
             expected=round(s['end']-s['start'],3);target=out/(s['id']+'.mp3')
@@ -253,9 +263,12 @@ def cut(a):
             todo.append((s,expected))
         def encode(item):
             s,expected=item;p=stage/(s['id']+'.mp3')
-            run([ffmpeg_bin(),'-v','error','-threads',threads,'-ss',s['start'],'-i',str(source),'-t',expected,'-vn','-c:a','libmp3lame','-q:a','2',str(p)])
-            measured=probe(p)
-            assert abs(measured-expected)<0.25,f'{s["id"]}: 裁剪时长异常 {measured:.2f}s'
+            try:
+                run([ffmpeg_bin(),'-nostdin','-v','error','-threads',threads,'-ss',s['start'],'-i',str(source),'-t',expected,'-map','0:a:0','-c:a','libmp3lame','-q:a','2',str(p)],timeout=120)
+                measured=probe(p)
+            except (ValueError,OSError,subprocess.TimeoutExpired) as error:
+                raise ValueError(f'片段 {s["id"]} 裁剪失败（{s["start"]}–{s["end"]} 秒）：{error}') from error
+            assert abs(measured-expected)<0.25,f'{s["id"]}: 裁剪时长异常 {measured:.2f}s（预期 {expected:.2f}s）'
             return {**s,'audio':s['id']+'.mp3','duration':round(measured,3)}
         if todo:
             progress(f'裁剪 {len(todo)} 个片段（{jobs} 并发）'+(f'，复用 {len(reused)} 个' if reused else ''))
@@ -277,7 +290,7 @@ def cut(a):
                                     'expected_count':len(final),'full_audio':full_name,'verification_mode':verification,
                                     'unverified':unverified,'quote_checks':checks,'segments':final})
         for p in stage.iterdir():p.replace(out/p.name)
-    print(json.dumps({'segments':len(final),'reused':reused,'verification_mode':verification,'full_audio':full_name,'resumed':bool(a.resume),'out':str(out)},ensure_ascii=False))
+    return {'segments':len(final),'reused':reused,'verification_mode':verification,'full_audio':full_name,'resumed':bool(a.resume),'out':str(out)}
 
 if __name__=='__main__':
     force_utf8()
@@ -291,5 +304,7 @@ if __name__=='__main__':
     x.add_argument('--jobs',type=int,default=MAX_WORKERS);x.add_argument('--threads',type=int,default=2);x.set_defaults(func=cut)
     args=p.parse_args()
     if hasattr(args,'timeout'):args.timeout=args.timeout or None
-    try:args.func(args)
+    try:
+        result=args.func(args)
+        if result is not None:print(json.dumps(result,ensure_ascii=False))
     except (ValueError,AssertionError,KeyError,FileNotFoundError,subprocess.TimeoutExpired) as e:p.exit(1,f'ERROR: {explain_error(e)}\n')

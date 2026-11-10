@@ -153,7 +153,7 @@ class PrepareWhisperRaises(unittest.TestCase):
 
 
 class AudioRaises(unittest.TestCase):
-    """`audio.py` 的 4 条判据：外部命令失败、空 WAV、截断 WAV、切点引文不匹配。"""
+    """音频探测及切片的失败路径。"""
 
     def test_external_command_failure_is_reported_with_exit_code(self):
         with self.assertRaises(ValueError) as caught:
@@ -175,6 +175,16 @@ class AudioRaises(unittest.TestCase):
             with self.assertRaises(ValueError) as caught:
                 audio.probe(target)
         self.assertIn('WAV 文件已截断', str(caught.exception))
+
+    def test_container_with_no_audio_stream_is_refused(self):
+        with mock.patch.object(audio,'run',return_value='{"streams":[],"format":{"duration":"7.2"}}'):
+            with self.assertRaisesRegex(ValueError,'没有可用音轨；请提供原始听力录音'):
+                audio.probe('video-only.mp4')
+
+    def test_audio_stream_with_no_finite_duration_is_refused(self):
+        with mock.patch.object(audio,'run',return_value='{"streams":[{"duration":"N/A"}],"format":{"duration":"nan"}}'):
+            with self.assertRaisesRegex(ValueError,'无法读取有效音频时长；请重新导出为 MP3 或 WAV'):
+                audio.probe('broken.mp3')
 
     def test_quote_that_does_not_match_the_cut_is_refused(self):
         """切点上的引文必须与那段转写吻合——"不能改音频去迁就引文"。
